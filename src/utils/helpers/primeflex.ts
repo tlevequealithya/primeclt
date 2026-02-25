@@ -1,7 +1,11 @@
 import inquirer from "inquirer";
 import { startTranslation } from "./twConverter";
 
-export async function translateToTailwind() {
+export async function translateToTailwind(
+	prefix?: string,
+	recursive: boolean = true,
+	important: boolean = false
+) {
 	const currentDirectoryAnswer = await inquirer.prompt([
 		{
 			type: "confirm",
@@ -27,5 +31,5 @@ export async function translateToTailwind() {
 		folderDirectory = process.cwd();
 	}
 
-	await startTranslation(folderDirectory);
+	await startTranslation(folderDirectory, prefix, recursive, important);
 }

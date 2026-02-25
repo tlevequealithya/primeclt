@@ -18,8 +18,11 @@ program.addCommand(widgets);
 program
 	.command("pf2tw")
 	.description("Translate PrimeFlex classes to Tailwind CSS classes")
-	.action(async () => {
-		await translateToTailwind();
+	.option("-p, --prefix <prefix>", "Prefix for Tailwind CSS classes")
+	.option("-i, --important", "Add !important to Tailwind CSS classes")
+	.option("--no-recursive", "Do not search for files recursively")
+	.action(async (options) => {
+		await translateToTailwind(options.prefix, options.recursive, options.important);
 	});
 
 program

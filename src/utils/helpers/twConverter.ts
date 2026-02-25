@@ -6,26 +6,84 @@ function preprocessHtml(htmlContent: string): string {
 	return htmlContent;
 }
 
+function translateContent(
+	content: string,
+	translationDict: Record<string, string>,
+	prefix?: string,
+	important: boolean = false
+): string {
+	const parts = content.split(/(\s+)/);
+	const translatedParts = parts.map((part) => {
+		if (/^\s+$/.test(part)) return part;
+		let translated = translationDict[part];
+		if (translated) {
+			if (prefix) {
+				translated = translated
+					.split(" ")
+					.filter((t) => t.length > 0)
+					.map((t) => `${prefix}:${t}`)
+					.join(" ");
+			}
+			if (important) {
+				translated = translated
+					.split(" ")
+					.filter((t) => t.length > 0)
+					.map((t) => `${t}!`)
+					.join(" ");
+			}
+			return translated;
+		}
+		return part;
+	});
+	return translatedParts.join("");
+}
+
 function directTranslateToTailwind(
 	htmlContent: string,
-	translationDict: Record<string, string>
+	translationDict: Record<string, string>,
+	prefix?: string,
+	important: boolean = false
 ): string {
-	const stringPattern = /(["'`])((?:\\\1|(?:(?!\1)).)*)(\1)/g;
+	const attributePattern =
+		/((?:(?:\[|\:)?class(?:Name)?(?:\])?)\s*=\s*)(["'`])((?:\\\2|(?:(?!\2)).|[\r\n])*?)(\2)/g;
 
 	const output = htmlContent.replace(
-		stringPattern,
+		attributePattern,
 		(
 			match: string,
+			attributePart: string,
 			quoteStart: string,
 			content: string,
 			quoteEnd: string
 		) => {
-			const parts = content.split(" ");
-			const translatedParts = parts.map((part) => {
-				return translationDict[part] || part;
-			});
-
-			return `${quoteStart}${translatedParts.join(" ")}${quoteEnd}`;
+			if (
+				attributePart.startsWith(":") ||
+				attributePart.startsWith("[") ||
+				attributePart.startsWith("v-bind")
+			) {
+				// Bound attribute, translate strings inside
+				const stringPattern = /(["'`])((?:\\\1|(?:(?!\1)).)*)(\1)/g;
+				const newContent = content.replace(
+					stringPattern,
+					(innerMatch, qStart, innerContent, qEnd) => {
+						return `${qStart}${translateContent(
+							innerContent,
+							translationDict,
+							prefix,
+							important
+						)}${qEnd}`;
+					}
+				);
+				return `${attributePart}${quoteStart}${newContent}${quoteEnd}`;
+			} else {
+				// Regular class attribute
+				return `${attributePart}${quoteStart}${translateContent(
+					content,
+					translationDict,
+					prefix,
+					important
+				)}${quoteEnd}`;
+			}
 		}
 	);
 
@@ -34,9 +92,16 @@ function directTranslateToTailwind(
 
 function processFolder(
 	folderPath: string,
-	translationDict: Record<string, string>
+	translationDict: Record<string, string>,
+	prefix?: string,
+	recursive: boolean = true,
+	important: boolean = false
 ) {
-	if (folderPath.includes("node_modules")) {
+	if (
+		folderPath.includes("node_modules") ||
+		folderPath.includes(".git") ||
+		folderPath.includes("dist")
+	) {
 		return;
 	}
 
@@ -45,10 +110,15 @@ function processFolder(
 		entries.forEach((entry) => {
 			console.log(entry.name);
 			if (entry.isDirectory()) {
-				processFolder(
-					path.join(folderPath, entry.name),
-					translationDict
-				);
+				if (recursive) {
+					processFolder(
+						path.join(folderPath, entry.name),
+						translationDict,
+						prefix,
+						recursive,
+						important
+					);
+				}
 			} else if (
 				entry.name.endsWith(".vue") ||
 				entry.name.endsWith(".js") ||
@@ -65,7 +135,9 @@ function processFolder(
 
 					vueContent = directTranslateToTailwind(
 						vueContent,
-						translationDict
+						translationDict,
+						prefix,
+						important
 					);
 
 					fs.writeFile(filePath, vueContent, "utf8", (err) => {
@@ -78,13 +150,23 @@ function processFolder(
 	});
 }
 
-function loadTranslationDict(vueFolderPath: string) {
-	processFolder(vueFolderPath, translation);
+function loadTranslationDict(
+	vueFolderPath: string,
+	prefix?: string,
+	recursive: boolean = true,
+	important: boolean = false
+) {
+	processFolder(vueFolderPath, translation, prefix, recursive, important);
 }
 
-export function startTranslation(vueFolderPath: string) {
+export function startTranslation(
+	vueFolderPath: string,
+	prefix?: string,
+	recursive: boolean = true,
+	important: boolean = false
+) {
 	try {
-		loadTranslationDict(vueFolderPath);
+		loadTranslationDict(vueFolderPath, prefix, recursive, important);
 		console.log("✅ Translation completed.");
 	} catch (err) {
 		console.error(err);
